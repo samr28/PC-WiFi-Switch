@@ -8,6 +8,8 @@ const char *password = "";
 const int relayPin = D1;
 WiFiServer server(80);
 
+int value = LOW;
+
 void setup()
 {
 #ifdef DEBUG
@@ -80,20 +82,26 @@ void loop()
 #endif
   client.flush();
 
-  //Match the request, checking to see what the currect state is
-  int value = LOW;
-  if (request.indexOf("/relay=ON") != -1)
+  // Match the request, checking to see what the currect state is
+  if (request.indexOf("/status") != -1)
   {
-    digitalWrite(relayPin, HIGH);
-    value = HIGH;
+    buildStatusHTML(client);
   }
-  if (request.indexOf("/relay=OFF") != -1)
+  else
   {
-    digitalWrite(relayPin, LOW);
-    value = LOW;
-  }
+    if (request.indexOf("/switch=ON") != -1)
+    {
+      digitalWrite(relayPin, HIGH);
+      value = HIGH;
+    }
+    else if (request.indexOf("/switch=OFF") != -1)
+    {
+      digitalWrite(relayPin, LOW);
+      value = LOW;
+    }
 
-  buildHTML(client, value);
+    buildHTML(client);
+  }
 
   delay(1);
 #ifdef DEBUG
@@ -102,7 +110,15 @@ void loop()
 #endif
 }
 
-String buildHTML(WiFiClient client, int value)
+void buildStatusHTML(WiFiClient client)
+{
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/plain");
+  client.println("");
+  client.println(value);
+}
+
+void buildHTML(WiFiClient client)
 {
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: text/html");
@@ -118,18 +134,21 @@ String buildHTML(WiFiClient client, int value)
   // MD Bootstrap
   client.println("<link href='https://mdbootstrap.com/wp-content/themes/mdbootstrap4/css/compiled-4.5.9.min.css?ver=4.5.9]' rel='stylesheet' />");
   client.println("</head>");
-  
+
   // Body
   client.println("<body>");
   client.println("<div class='container mt-3'><div class='row'><div class='col'><h1>PC Remote Start</h1></div></div>");
   client.println("<div class='row'><div class='col'><div class='card mt-3'><div class='header pt-3 pb-3 blue-gradient'><div class='row d-flex justify-content-center'><h3 class='white-text pt-3 font-weight-bold'>SYSTEM NAME</h3></div></div><div class='card-body'><div class='row'><div class='col'>");
   client.print("<h5>Switch is currently: ");
-  if (value == HIGH) {
+  if (value == HIGH)
+  {
     client.print("ON");
-  } else {
+  }
+  else
+  {
     client.print("OFF");
   }
-  client.print("</h5></div><div class='col'><a href=\"/relay=ON\"><button class='btn btn-success pull-right'>Turn on</button></a><a href=\"/relay=OFF\"><button class='btn btn-danger pull-right'>Turn off</button></a></div></div></div></div></div></div></div>");
+  client.print("</h5></div><div class='col'><a href=\"/switch=ON\"><button class='btn btn-success pull-right'>Turn on</button></a><a href=\"/switch=OFF\"><button class='btn btn-danger pull-right'>Turn off</button></a></div></div></div></div></div></div></div>");
   client.println("</body>");
   client.println("</html>");
 }
