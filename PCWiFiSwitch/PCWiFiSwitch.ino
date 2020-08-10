@@ -1,154 +1,109 @@
-#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 
 // #define DEBUG 1
 
-const char *ssid = "";
-const char *password = "";
+#define HTTP_REST_PORT 80
+const int RELAY_PIN = D1;
 
-const int relayPin = D1;
-WiFiServer server(80);
+const char *ssid = "Your WiFi SSID";
+const char *password = "Your WiFi Password";
+const String deviceName = "A Device";
 
-int value = LOW;
+ESP8266WebServer http_rest_server(HTTP_REST_PORT);
 
-void setup()
-{
-#ifdef DEBUG
-  Serial.begin(115200);
-  delay(10);
-#endif
+int state = LOW;
 
-  // Init relay pin
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
-
-#ifdef DEBUG
-  Serial.println();
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-#endif
-
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    // Wait a bit and then try again
-    delay(500);
-#ifdef DEBUG
-    Serial.print(".");
-#endif
-  }
-
-#ifdef DEBUG
-  Serial.println("");
-  Serial.println("WiFi connected");
-#endif
-
-  // Start the server
-  server.begin();
-
-#ifdef DEBUG
-  Serial.println("Server started");
-  // Print the IP address
-  Serial.print("Use this URL : ");
-  Serial.print("http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/");
-#endif
+String getStateText() {
+  return state ? "1" : "0";
 }
 
-void loop()
-{
-  // Check if a client has connected
-  WiFiClient client = server.available();
-  if (!client)
-  {
+void getState() {
+  http_rest_server.send(200, "text/html", getStateText());
+}
+
+void changeState() {
+  String post_body = http_rest_server.arg("plain");
+  if (post_body == "1") {
+    state = 1;
+    digitalWrite(RELAY_PIN, HIGH);
+  } else if (post_body == "0") {
+    state = 0;
+    digitalWrite(RELAY_PIN, LOW);
+  } else {
+    http_rest_server.send(400);
     return;
   }
-
-// Wait until the client sends some data
-#ifdef DEBUG
-  Serial.println("new client");
-#endif
-
-  while (!client.available())
-  {
-    delay(1);
-  }
-
-  // Read the first line of the request
-  String request = client.readStringUntil('\r');
-#ifdef DEBUG
-  Serial.println(request);
-#endif
-  client.flush();
-
-  // Match the request, checking to see what the currect state is
-  if (request.indexOf("/status") != -1)
-  {
-    buildStatusHTML(client);
-  }
-  else
-  {
-    if (request.indexOf("/switch=ON") != -1)
-    {
-      digitalWrite(relayPin, HIGH);
-      value = HIGH;
-    }
-    else if (request.indexOf("/switch=OFF") != -1)
-    {
-      digitalWrite(relayPin, LOW);
-      value = LOW;
-    }
-
-    buildHTML(client);
-  }
-
-  delay(1);
-#ifdef DEBUG
-  Serial.println("Client disconnected");
-  Serial.println("");
-#endif
+  http_rest_server.send(200, "text/html", getStateText());
 }
 
-void buildStatusHTML(WiFiClient client)
-{
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/plain");
-  client.println("");
-  client.println(value);
+void flipState() {
+  String post_body = http_rest_server.arg("plain");
+  int time = post_body.toInt();
+  http_rest_server.send(200, "text/html", "Flipping...");
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(time);
+  digitalWrite(RELAY_PIN, LOW);
 }
 
-void buildHTML(WiFiClient client)
-{
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("");
+void getDeviceName() {
+  http_rest_server.send(200, "text/html", deviceName);
+}
 
-  client.println("<!DOCTYPE HTML>");
-  client.println("<html>");
+void configureRouter() {
+  http_rest_server.on("/name", HTTP_GET, getDeviceName);
+  http_rest_server.on("/", HTTP_GET, getState);
+  http_rest_server.on("/", HTTP_POST, changeState);
+  http_rest_server.on("/flip", HTTP_POST, flipState);
+}
 
-  // Head
-  client.println("<head>");
-  // Bootstrap
-  client.println("<link rel='stylesheet' href='https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css' integrity='sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T' crossorigin='anonymous' />");
-  // MD Bootstrap
-  client.println("<link href='https://mdbootstrap.com/wp-content/themes/mdbootstrap4/css/compiled-4.5.9.min.css?ver=4.5.9]' rel='stylesheet' />");
-  client.println("</head>");
+void setup() {
+  #ifdef DEBUG
+    Serial.begin(115200);
+    delay(10);
+  #endif
 
-  // Body
-  client.println("<body>");
-  client.println("<div class='container mt-3'><div class='row'><div class='col'><h1>PC Remote Start</h1></div></div>");
-  client.println("<div class='row'><div class='col'><div class='card mt-3'><div class='header pt-3 pb-3 blue-gradient'><div class='row d-flex justify-content-center'><h3 class='white-text pt-3 font-weight-bold'>SYSTEM NAME</h3></div></div><div class='card-body'><div class='row'><div class='col'>");
-  client.print("<h5>Switch is currently: ");
-  if (value == HIGH)
-  {
-    client.print("ON");
+  // Init relay pin
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
+  #ifdef DEBUG
+    Serial.println();
+    Serial.println();
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+  #endif
+
+  WiFi.hostname("PCWiFiSwitch-"+deviceName);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    // Wait a bit and then try again
+    delay(500);
+    #ifdef DEBUG
+        Serial.print(".");
+    #endif
   }
-  else
-  {
-    client.print("OFF");
-  }
-  client.print("</h5></div><div class='col'><a href=\"/switch=ON\"><button class='btn btn-success pull-right'>Turn on</button></a><a href=\"/switch=OFF\"><button class='btn btn-danger pull-right'>Turn off</button></a></div></div></div></div></div></div></div>");
-  client.println("</body>");
-  client.println("</html>");
+
+  #ifdef DEBUG
+    Serial.println("");
+    Serial.println("WiFi connected");
+  #endif
+
+  // Set routes
+  configureRouter();
+
+  // Start the server
+  http_rest_server.begin();
+
+  #ifdef DEBUG
+    Serial.println("Server started");
+    // Print the IP address
+    Serial.print("Use this URL : ");
+    Serial.print("http://");
+    Serial.print(WiFi.localIP());
+    Serial.println("/");
+  #endif
+}
+
+void loop(){
+  http_rest_server.handleClient();
 }
